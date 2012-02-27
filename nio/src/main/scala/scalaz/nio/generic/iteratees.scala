@@ -111,7 +111,12 @@ trait Iteratees {
       case class Done[I,O](result: O, lastInput: StreamValue[I]) extends ConsumerState[I,O]
       /** The 'processing' state of a consumer.  Contains the function to run on the next set of input. */
       case class Processing[I,O](consumeNext: StreamValue[I] => Consumer[I,O]) extends ConsumerState[I,O]
-      /** The 'error' state of a consumer.  Contains the error meessage and the last input encountered. */
+      /** The 'error' state of a consumer.  Contains the error meessage and the last input encountered. 
+       * 
+       *  NOTE: RandomAcess iteratees *FORCE* use to keep some way of regenerating an Consumer if the Producer
+       *  is able to "recover" from the error (i.e. handle the error-channel messaging).   This means we
+       *  need a mechanism of propogating a (onFix: => Consumer[I,O) parameter here.
+       */
       case class Error[I,O](error: ProcessingError, lastInput: StreamValue[I]) extends ConsumerState[I, O]
       
       /** Constructs a new consumer in the done state. */
