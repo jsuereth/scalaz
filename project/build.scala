@@ -4,7 +4,7 @@ import sbt._
 import Keys._
 import GenTypeClass._
 import Project.Setting
-import com.jsuereth.pgp.GpgPlugin._
+import com.jsuereth.pgp.sbtplugin.PgpPlugin._
 
 object build extends Build {
   type Sett = Project.Setting[_]
@@ -134,6 +134,15 @@ object build extends Build {
       name := "scalaz-iteratee"
     ),
     dependencies = Seq(effect)
+  )
+
+  lazy val nio = Project(
+    id = "nio",
+    base = file("nio"),
+    settings = standardSettings ++ Seq[Sett](
+      name := "scalaz-nio"
+    ),
+    dependencies = Seq(effect, iteratee)
   )
 
   lazy val typelevel = Project(
