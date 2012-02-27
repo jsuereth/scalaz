@@ -223,13 +223,9 @@ trait Iteratees {
     object std {
       implicit def consumerInstance[I] = new Monad[({type C[A] = Consumer[I,A]})#C] { instance =>
         import Consumer._
-        // Joins iteratees
-        override def ap[A,B](fa: => Consumer[I, A])(f: => Consumer[I, A => B]): Consumer[I, B] = {
-          for {
-            a <- fa
-            func <- f
-          } yield func(a)
-        }
+        // Applicative-style invocation should "zip" iteratees together (i.e. parallel consumption).
+        override def ap[A,B](fa: => Consumer[I, A])(f: => Consumer[I, A => B]): Consumer[I, B] = 
+          fa zip f map { case (a, f) => f(a) }
         override def point[A](a: => A): Consumer[I,A] =
           Consumer.done(a, EmptyChunk)
         override def map[A,B](ma: Consumer[I, A])(f: A=>B): Consumer[I, B] = new Consumer[I, B] {

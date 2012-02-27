@@ -176,7 +176,7 @@ object build extends Build {
   lazy val tests = Project(
     id = "tests",
     base = file("tests"),
-    dependencies = Seq(core, iteratee, concurrent, effect, typelevel, scalacheckBinding % "test"),
+    dependencies = Seq(core, iteratee, concurrent, effect, typelevel, nio, scalacheckBinding % "test"),
     settings = standardSettings ++Seq[Sett](
       name := "scalaz-tests",
       libraryDependencies ++= Seq(
