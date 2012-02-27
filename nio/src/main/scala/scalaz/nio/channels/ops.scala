@@ -17,5 +17,7 @@ trait ChannelOps extends generic.Iteratees {
       contexted(c.read(buf))
     def writeChannel(c: WritableByteChannel)(buf: ByteBuffer) =
       contexted(c.write(buf))
+    def closeChannel(c: Channel) =
+      contexted(c.close())
   }
 }

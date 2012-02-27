@@ -10,7 +10,7 @@ import java.nio.channels.ByteChannel
 trait ByteChannels extends generic.Iteratees with ChannelOps {
   import iteratees._
   
-  object channels {
+  object bytechannels {
     type RByteBuffer = ImmutableBuffer[Byte,Read]
       
     /** A Producer that will read the bytes in a file channel, and allow

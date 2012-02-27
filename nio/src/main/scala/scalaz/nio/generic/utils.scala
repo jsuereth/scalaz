@@ -34,10 +34,10 @@ trait IterateeUtils extends Iteratees {
       Consumer cont step(0)
     }
     
-    def lengthCounter[F[_]: Length, I] = {
-      def step(count: Long): StreamValue[F[I]] => Consumer[F[I],Long] = {
+    def lengthCounter[I](length: I => Long) = {
+      def step(count: Long): StreamValue[I] => Consumer[I,Long] = {
         case e @ EOF      => Consumer.done(count, e)
-        case Chunk(i)     => Consumer cont step(count + Length[F].length(i))
+        case Chunk(i)     => Consumer cont step(count + length(i))
         case EmptyChunk   => Consumer cont step(count)
       }
       Consumer cont step(0)

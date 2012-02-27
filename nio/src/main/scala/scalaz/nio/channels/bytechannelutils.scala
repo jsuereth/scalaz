@@ -5,11 +5,11 @@ package channels
 import java.security.MessageDigest
 import scalaz.nio.buffers.{ImmutableBuffer, Read}
 
-/** Generic utility Iteratees usable regardless of incoming inputs. */
+/** Generic utility Iteratees usable for any ByteBuffer channel input streams. */
 trait ChannelUtils extends generic.Iteratees {
   import iteratees._
   
-  object channelutils {
+  object bytechannelutils {
     type RByteBuffer = ImmutableBuffer[Byte, Read]
     /** Calculates the digest of a readable byte buffer stream. */
     def digest(md: => MessageDigest): Consumer[RByteBuffer, Array[Byte]] = {

@@ -157,7 +157,7 @@ object build extends Build {
   lazy val example = Project(
     id = "example",
     base = file("example"),
-    dependencies = Seq(core, iteratee, concurrent, typelevel),
+    dependencies = Seq(core, iteratee, concurrent, typelevel, nio),
     settings = standardSettings ++ Seq[Sett](
       name := "scalaz-example"
     )
