@@ -9,10 +9,10 @@ object NioUsage {
   import nio.buffers._
 
   /** Ensures a file is closed. */
-  def withFile[A](file: java.io.File)(proc: java.nio.channels.FileChannel => IO[A]): IO[A] = 
+  def withFile[A](file: java.io.File)(proc: java.nio.channels.FileChannel => IO[A]): IO[A] =
     for {
       stream <- IO(new java.io.FileInputStream(file))
-      result <- proc(stream.getChannel)
+      result <- proc(stream.getChannel) onException(IO(stream.close()))
       _      <- IO(stream.close())
     } yield result
 
