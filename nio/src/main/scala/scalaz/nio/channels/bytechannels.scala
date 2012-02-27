@@ -3,9 +3,9 @@ package nio
 package channels
 
 import syntax.monad._
-
 import scalaz.nio.buffers.{ImmutableBuffer,Read}
 import java.nio.channels.ByteChannel
+import java.nio.ByteBuffer
 
 trait ByteChannels extends generic.Iteratees with ChannelOps {
   import iteratees._
@@ -18,7 +18,7 @@ trait ByteChannels extends generic.Iteratees with ChannelOps {
      * move the channel to a new position and then continue feeding
      * data.
      */
-    def read_channel_bytes(channel: ByteChannel): Producer[RByteBuffer] =
+    def read_channel_bytes(channel: ByteChannel, directBuffers: Boolean = false, bufferSize: Int = 64*1024): Producer[RByteBuffer] =
       new Producer[RByteBuffer] {
         override def into[O](c: Consumer[RByteBuffer,O]): Consumer[RByteBuffer,O] = {
           def drive(channel: ByteChannel, c: Consumer[RByteBuffer,O]): Consumer[RByteBuffer,O] = 
@@ -27,11 +27,14 @@ trait ByteChannels extends generic.Iteratees with ChannelOps {
               case c @ Consumer.Error(_,_) => contexted(Consumer(c))
               case Consumer.Processing(f) =>
                 for {
-                  buf <- contexted(java.nio.ByteBuffer.allocate(64*1024))
+                  buf <- contexted(if(directBuffers) java.nio.ByteBuffer.allocateDirect(bufferSize) 
+                                   else java.nio.ByteBuffer.allocate(bufferSize))
                   r <- channelio.readChannel(channel)(buf)
                   next = r match {
                     case -1 => EOF
-                    case _  => Chunk(ImmutableBuffer.fromJavaBytesWriting(buf,copy=false).flip)
+                    case _  =>
+                      buf.flip
+                      Chunk(ImmutableBuffer.fromJavaBytesReading(buf,copy=false))
                   }
                 } yield drive(channel, f(next))
             }

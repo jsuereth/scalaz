@@ -27,7 +27,7 @@ object NioUsage {
   // Mimics WC command-line
   def wcLzy(file: java.io.File): IO[String] =
     withFile(file) { c =>
-      val bytes = bytechannels read_channel_bytes c
+      val bytes = bytechannels.read_channel_bytes(c, directBuffers=true)
       val wordCount = charchannels.words convert utils.counter
       val lineCount = charchannels.lines convert utils.counter
       val allCount = lineCount zip wordCount zip utils.lengthCounter(_.remaining) map {
