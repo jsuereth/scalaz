@@ -5,6 +5,7 @@ package nio
 object std extends generic.Iteratees
            with    generic.IterateeUtils
            with    channels.ByteChannels
+           with    channels.FileChannels
            with    channels.ChannelUtils 
            with    channels.CharChannels {
   type Context[X] = effect.IO[X]

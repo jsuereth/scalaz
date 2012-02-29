@@ -49,9 +49,10 @@ trait IterateeUtils extends Iteratees {
         case e @ EOF      => Consumer.done(current, e)
         case c @ Chunk(_) =>
           Consumer flatten in.fold[Consumer[I,Vector[O]]] {
-              case Consumer.Done(value, el) => contexted(Consumer.done(current :+ value, el))
-              case Consumer.Error(err, el)  => contexted(Consumer.error(err, el))
-              case Consumer.Processing(k)   => contexted(for(h <- k(c); t <- repeat(in)) yield h +: t)
+              case Consumer.Done(value, el)     => contexted(Consumer.done(current :+ value, el))
+              case Consumer.Error(err, el)      => contexted(Consumer.error(err, el))
+              case Consumer.Processing(k, None) => contexted(for(h <- k(c); t <- repeat(in)) yield h +: t)
+              case Consumer.Processing(k, Some(msg)) => contexted(Consumer.contWithMsg(step(current), msg))
           }
       }
       Consumer cont step(Vector.empty)

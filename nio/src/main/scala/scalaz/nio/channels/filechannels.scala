@@ -12,23 +12,25 @@ trait FileChannels extends generic.Iteratees with ChannelOps {
   object filechannels {
     type RByteBuffer = ImmutableBuffer[Byte,Read]
     /** Marker trait for RandomAccess consumer "error channel" messages. */
-    trait RandomAccessError extends ProcessingError
-    object RandomAccessError {
+    trait RandomAccessMsg extends ProcessingMessage
+    object RandomAccessMsg {
       /** An error state that denotes the Producing file channel should
        *  seek to the given offset, and then being pushing to the desired iteratee.
        *  
        *  TODO - Find  a way to bubble up nested stream-command Iteratees for
        *  wrapping/conversion etc.
        */
-      case class SeekTo[I,O](offset: Long, next: Consumer[I,O]) extends RandomAccessError
+      case class SeekTo[I,O](offset: Long) extends RandomAccessMsg
     }
     
-    /** An Iteratee that initiates a "seek to" message to a file channel.
-     * 
-     *  TODO - make this work with map/flatMap/zip.
+    /** An Iteratee that initiates a "seek to" message to a file channel. 
+     * This will seek to a relative position in a file.
+     * intended to be used with flatMap to sequence into other 
+     * commands.
      */
     def seekTo(offset: Long): Consumer[RByteBuffer, Unit] =
-      Consumer.error(RandomAccessError.SeekTo(offset, Consumer.done[RByteBuffer, Unit]((), EOF)), EOF)
+      Consumer.contWithMsg(in => Consumer.done((), in), 
+                           RandomAccessMsg.SeekTo(offset))
 
       
     /** A Producer that will read the bytes in a file channel, and allow
@@ -39,16 +41,17 @@ trait FileChannels extends generic.Iteratees with ChannelOps {
     def read_file_bytes(channel: FileChannel): Producer[RByteBuffer] =
       new Producer[RByteBuffer] {
         override def into[O](c: Consumer[RByteBuffer,O]): Consumer[RByteBuffer,O] = {
+          import RandomAccessMsg.SeekTo
           def drive(channel: FileChannel, c: Consumer[RByteBuffer,O]): Consumer[RByteBuffer,O] = 
             Consumer flatten c.fold {
-              case c @ Consumer.Done(_,_) => contexted(Consumer(c))
-              case Consumer.Error(RandomAccessError.SeekTo(offset, next), _) =>
+              case c @ Consumer.Done(_,_) => contexted(Consumer(c))     
+              case Consumer.Processing(f, Some(SeekTo(offset))) =>
                 for {
                   pos <- channelio.position(channel)
-                  _   <- channelio.setPosition(channel)(pos + offset)
-                } yield drive(channel, next.asInstanceOf[Consumer[RByteBuffer, O]])
-              case c @ Consumer.Error(_,_) => contexted(Consumer(c))
-              case Consumer.Processing(f) =>
+                  newpos = pos + offset
+                  _ <- channelio.setPosition(channel)(newpos)
+                } yield drive(channel, Consumer.cont(f))
+              case Consumer.Processing(f, _) =>
                 for {
                   buf <- contexted(java.nio.ByteBuffer.allocate(64*1024))
                   r <- channelio.readChannel(channel)(buf)

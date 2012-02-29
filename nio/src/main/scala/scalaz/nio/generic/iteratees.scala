@@ -11,11 +11,16 @@ trait Iteratees {
   def contexted[A](a: A): Context[A] = context_monad.point(a)
   /** "package" containing iteratee module. */
   object iteratees {
-    /** Base class trait for Error-channel between producers/consumers */
+    /** Base class trait for Error-channel between producers/consumers.
+     * Error messages tell the producers to stop processing, and potentially perform
+     * other cleanup actions.
+     */
     trait ProcessingError
     /** A fatal processing error that may have occurred. */
-    case class FatalProcessingError(t: Throwable) extends ProcessingError
+    case class FatalProcessingError(t: Throwable) extends ProcessingError {}
     
+    /** A message to send back to a Producer for processing, if it knows how.*/
+    trait ProcessingMessage
     
     
     /** The lowest trait that represents values that can be passed to consumers.  This hierarchy is
@@ -52,10 +57,10 @@ trait Iteratees {
       def result: Context[O] = fold {
         case Consumer.Done(o, i)    => contexted(o)
         case Consumer.Error(e, _)   => sys.error("Processing Erorr: " + e)
-        case Consumer.Processing(f) => 
+        case Consumer.Processing(f, _) => 
           f(EOF) fold {
             case Consumer.Done(o,_)     => contexted(o)
-            case Consumer.Processing(_) => sys.error("Divergent Consumer")
+            case Consumer.Processing(_, _) => sys.error("Divergent Consumer")
             case Consumer.Error(e,_)    => sys.error("Processing Erorr: " + e)
           }
       }
@@ -66,13 +71,13 @@ trait Iteratees {
        */
       def join[I2, O2](implicit ev0: O <:< Consumer[I2, O2]): Consumer[I,O2] =
         this flatMap { iter2 => 
-          Consumer flatten iter2.fold[Consumer[I,O2]] {
+        Consumer flatten iter2.fold[Consumer[I,O2]] {
             case Consumer.Done(a, i)    => contexted(Consumer.done(a, EmptyChunk))
             case Consumer.Error(e,_)    => contexted(Consumer.error(e, EmptyChunk))
-            case Consumer.Processing(k) => k(EOF) fold {
+            case Consumer.Processing(k, msg) => k(EOF) fold {
               case Consumer.Done(a, i)    => contexted(Consumer.done(a, EmptyChunk))
               case Consumer.Error(e, _)   => contexted(Consumer.error(e, EmptyChunk))
-              case Consumer.Processing(_) => sys.error("join: Divergent iteratee!")
+              case Consumer.Processing(_, _) => sys.error("join: Divergent iteratee!")
             }
           }
         }    
@@ -94,8 +99,12 @@ trait Iteratees {
           second.fold { state2 =>
             (state1, state2) match {
               case (Consumer.Done(a, i), Consumer.Done(b, _)) => f(Consumer.Done(a->b, i))
-              case (Consumer.Error(e,k), _)                   => f(Consumer.Error(e,k))
-              case (_, Consumer.Error(e,k))                   => f(Consumer.Error(e,k))
+              // TODO - Both cases are errors....
+              case (Consumer.Error(e,k), other)               => f(Consumer.Error(e, k))
+              case (other, Consumer.Error(e,k))               => f(Consumer.Error(e, k))
+              // TODO - Should we feed control like this in a zipped consumer?
+              case (Consumer.Processing(_, msg @ Some(_)), _) => f(Consumer.Processing(drive, msg))
+              case (_, Consumer.Processing(_, msg @ Some(_))) => f(Consumer.Processing(drive, msg))
               case _                                          => f(Consumer.Processing(drive))
             }
           }
@@ -110,7 +119,7 @@ trait Iteratees {
       /** The 'done' state of a consumer.  The result is available for usage. */
       case class Done[I,O](result: O, lastInput: StreamValue[I]) extends ConsumerState[I,O]
       /** The 'processing' state of a consumer.  Contains the function to run on the next set of input. */
-      case class Processing[I,O](consumeNext: StreamValue[I] => Consumer[I,O]) extends ConsumerState[I,O]
+      case class Processing[I,O](consumeNext: StreamValue[I] => Consumer[I,O], optMsg: Option[ProcessingMessage] = None) extends ConsumerState[I,O]
       /** The 'error' state of a consumer.  Contains the error meessage and the last input encountered. 
        * 
        *  NOTE: RandomAcess iteratees *FORCE* use to keep some way of regenerating an Consumer if the Producer
@@ -120,13 +129,18 @@ trait Iteratees {
       case class Error[I,O](error: ProcessingError, lastInput: StreamValue[I]) extends ConsumerState[I, O]
       
       /** Constructs a new consumer in the done state. */
-      def done[I,O](value: O, remaining: StreamValue[I]) =
+      def done[I,O](value: O, remaining: StreamValue[I]): Consumer[I,O] =
         Consumer(Done[I,O](value, remaining))
       /** Constructs a consumer that accepts the next stream input and
        * returns the next consumer.
        */
-      def cont[I,O](f: StreamValue[I] => Consumer[I,O]) =
-        Consumer(Processing(f))
+      def cont[I,O](f: StreamValue[I] => Consumer[I,O], msg: Option[ProcessingMessage] = None): Consumer[I,O] =
+        Consumer(Processing(f, msg))
+      /** Constructs a consumer that requests the Producer to perform some action
+       * before continuing.
+       */
+      def contWithMsg[I,O](f: StreamValue[I] => Consumer[I,O], msg: ProcessingMessage): Consumer[I,O] =
+        Consumer(Processing(f, Option(msg)))
       /** Constructs a consumer that represents an error condition. */
       def error[I,O](err: ProcessingError, last: StreamValue[I]) =
         Consumer[I,O](Error[I,O](err, last))
@@ -175,7 +189,7 @@ trait Iteratees {
         override def into[O](c: Consumer[T, O]): Consumer[T, O] = 
           Consumer flatten (c fold {
             case Consumer.Done(_,_)     => contexted(c)
-            case Consumer.Processing(f) => contexted(f(in))
+            case Consumer.Processing(f, _) => contexted(f(in))
             case Consumer.Error(_, _)   => contexted(c)
           })
         override def toString = "Producer.once("+in+")"
@@ -210,8 +224,10 @@ trait Iteratees {
           }
           def next(wrapped: Consumer[B,O]): StreamValue[A] => Consumer[A,Consumer[B,O]] = { in =>
             Consumer.flatten(wrapped fold {
-              case Consumer.Processing(f) => contexted(Consumer.cont(next(f(wrapInput(in)))))
-              case x                      => contexted(Consumer.done(Consumer(x), in))
+              case Consumer.Processing(f, None)      => contexted(Consumer.cont(next(f(wrapInput(in)))))
+              // TODO - Is this correct?
+              case Consumer.Processing(f, Some(msg)) => contexted(Consumer.contWithMsg(next(f(wrapInput(in))), msg))
+              case x                                 => contexted(Consumer.done(Consumer(x), in))
             })
           }
           Consumer.cont(next(i))
@@ -232,15 +248,15 @@ trait Iteratees {
           // TODO - memoize the result of a fold, if possible.
           override def fold[R](f2: ConsumerState[I,B] => Context[R]): Context[R] =
             ma fold {
-              case Done(a, i)     => f2(Done(f(a), i))
-              case Processing(f3) => f2(Processing(f3 andThen (instance.map(_)(f))))
-              case Error(e,i)     => f2(Error(e,i))
+              case Done(a, i)           => f2(Done(f(a), i))
+              case Processing(f3, msg) => f2(Processing(f3 andThen (instance.map(_)(f)), msg))
+              case Error(e,i)           => f2(Error(e,i))
             }
         }
         override def bind[A,B](ma: Consumer[I,A])(f: A => Consumer[I,B]): Consumer[I,B] = 
           Consumer flatten ma.fold[Consumer[I,B]] {
             case Done(a, next)  => contexted(Producer once next into f(a))
-            case Processing(k)  => contexted(cont(in => bind(k(in))(f)))
+            case Processing(k, msg)  => contexted(cont(in => bind(k(in))(f), msg))
             case Error(e, next) => contexted(error(e,next))
           }
       }

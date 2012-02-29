@@ -38,6 +38,20 @@ object NioUsage {
              result)
     }
   def wc(file: java.io.File): String = wcLzy(file).unsafePerformIO
+
+  // Grabs the last byte of the file, showing off the random-access "seekTo" function.
+  def lastByte(file: java.io.File) = 
+    withFile(file) { channel =>
+      def proc(length: Long) = for {
+        _ <- filechannels.seekTo(length)
+        h <- utils.head
+      } yield h.map(_.next._1)
+      for {
+        length <- IO(file.length)
+        bytes = filechannels.read_file_bytes(channel)
+        result <- bytes into proc(length-1) result
+      } yield result
+    }
 }
 
 

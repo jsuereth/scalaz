@@ -25,7 +25,7 @@ trait ByteChannels extends generic.Iteratees with ChannelOps {
             Consumer flatten c.fold {
               case c @ Consumer.Done(_,_) => contexted(Consumer(c))
               case c @ Consumer.Error(_,_) => contexted(Consumer(c))
-              case Consumer.Processing(f) =>
+              case Consumer.Processing(f, _) =>
                 for {
                   buf <- contexted(java.nio.ByteBuffer.allocate(64*1024))
                   r <- channelio.readChannel(channel)(buf)
