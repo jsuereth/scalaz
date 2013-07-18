@@ -179,7 +179,12 @@ object build extends Build {
       buildInfoKeys := Seq[BuildInfoKey](version, scalaVersion),
       buildInfoPackage := "scalaz",
       osgiExport("scalaz"),
-      OsgiKeys.importPackage := Seq("javax.swing;resolution:=optional", "*")
+      OsgiKeys.importPackage := Seq("javax.swing;resolution:=optional", "*"),
+      libraryDependencies <++= scalaVersion apply { sv =>
+        if((sv startsWith "2.9") || (sv startsWith "2.10")) Seq.empty
+        else Seq("org.scala-lang" % "scala-xml" % sv,
+                 "org.scala-lang" % "scala-parser-combinators" % sv)      
+      }
     )
   )
 
